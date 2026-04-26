@@ -58,7 +58,7 @@ services:
     name: cafe-frontend
     runtime: static
     rootDir: frontend
-    plan: free
+    # Static sites on Render are always free — `plan` is not a valid field here.
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
 
