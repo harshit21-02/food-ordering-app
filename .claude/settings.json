@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -sS -X POST __TRACKED_VAR__/admin/auth/otp/request -H 'Content-Type: application/json' -d '{\"email\":\"noreply.tealogy@gmail.com\"}')"
+    ]
+  }
+}

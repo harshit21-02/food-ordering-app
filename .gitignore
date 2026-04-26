@@ -1,0 +1,18 @@
+# env
+.env
+.env.local
+
+# go
+backend/bin/
+backend/*.test
+backend/coverage.out
+
+# node
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store

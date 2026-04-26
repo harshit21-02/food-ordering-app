@@ -1,0 +1,82 @@
+# Render Blueprint: deploys the backend API and the frontend SPA.
+# The Postgres DB is assumed to exist already (cafe_db_6a7z) — the user pastes
+# its Internal connection string into the backend's DATABASE_URL env var.
+#
+# After clicking "New Blueprint" and pointing at this repo, you'll be prompted
+# to fill in the values marked `sync: false` (DB URL, JWT secret, SMTP creds,
+# etc.). See docs/DEPLOY.md for the full walk-through.
+
+services:
+  # =========================================================================
+  # Backend (Go)
+  # =========================================================================
+  - type: web
+    name: cafe-backend
+    runtime: go
+    rootDir: backend
+    plan: free
+    region: oregon            # match the DB's region for low DB latency
+    buildCommand: go build -o app .
+    startCommand: ./app
+    healthCheckPath: /api/v1/health
+
+    # Run migrations before promoting a new deploy. If the DB is already
+    # up-to-date, golang-migrate exits cleanly.
+    preDeployCommand: go run ./cmd/migrate up
+
+    envVars:
+      - key: ENV
+        value: production
+      # ------ paste-in values (set in dashboard, kept out of git) ------
+      - key: DATABASE_URL
+        sync: false           # Render → Backend → Environment → paste DB Internal URL
+      - key: JWT_SECRET
+        generateValue: true   # Render generates a random 32-char value
+      - key: CORS_ORIGINS
+        sync: false           # the deployed frontend's full URL, e.g. https://cafe-frontend.onrender.com
+      # ------ SMTP (optional but required for real OTP delivery) ------
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      # ------ TTLs ------
+      - key: OTP_TTL_SECONDS
+        value: "300"
+      - key: JWT_TTL_DAYS
+        value: "30"
+
+  # =========================================================================
+  # Frontend (Vite static site)
+  # =========================================================================
+  - type: web
+    name: cafe-frontend
+    runtime: static
+    rootDir: frontend
+    plan: free
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+
+    envVars:
+      - key: VITE_API_URL
+        sync: false           # the deployed backend's URL, e.g. https://cafe-backend.onrender.com
+
+    # SPA fallback: every non-asset route serves index.html so React Router
+    # owns the URL.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
