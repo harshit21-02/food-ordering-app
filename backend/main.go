@@ -12,6 +12,14 @@ import (
 func main() {
 	cfg := config.Load()
 
+	// Apply any pending migrations on startup. Idempotent — safe to run on every
+	// boot (PaaS-friendly: no pre-deploy hook needed). The path is relative to
+	// the working dir at runtime, which is `backend/` for both `make backend`
+	// (locally) and Render's start command.
+	if err := db.MigrateUp(cfg.DatabaseURL, "../migrations"); err != nil {
+		log.Fatalf("migrate: %v", err)
+	}
+
 	gormDB, err := db.Open(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("db open: %v", err)

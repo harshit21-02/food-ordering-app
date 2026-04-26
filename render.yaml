@@ -20,9 +20,9 @@ services:
     startCommand: ./app
     healthCheckPath: /api/v1/health
 
-    # Run migrations before promoting a new deploy. If the DB is already
-    # up-to-date, golang-migrate exits cleanly.
-    preDeployCommand: go run ./cmd/migrate up
+    # Migrations run automatically on startup via internal/db.MigrateUp.
+    # (Render's free plan blocks `preDeployCommand`, which is the more
+    # conventional place — startup-migrations is idempotent and works the same.)
 
     envVars:
       - key: ENV

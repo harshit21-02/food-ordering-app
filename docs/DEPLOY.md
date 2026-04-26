@@ -65,10 +65,10 @@ The frontend bakes this URL into the JS bundle at build time. **Changing it late
 
 Render runs:
 
-- Backend: `go build -o app .` → `./cmd/migrate up` (pre-deploy) → `./app`
-- Frontend: `npm install && npm run build` → publishes `frontend/dist`
+- Backend: `go build -o app .` → `./app`. The binary applies any pending migrations on startup (`internal/db.MigrateUp`) before serving traffic — idempotent, exits cleanly when the DB is already up to date.
+- Frontend: `npm install && npm run build` → publishes `frontend/dist`.
 
-The pre-deploy migrate is idempotent — runs `golang-migrate up`, which sees the DB at version 4 already and exits cleanly with `no change`. On future schema changes (new migration files), it applies them automatically.
+> Why startup migrations and not a pre-deploy hook? Render's free plan blocks the `preDeployCommand` field. Putting the migrate call inside `main.go` works on every plan, runs in the same process that already has `DATABASE_URL` injected, and stays idempotent across restarts.
 
 ### 4. Verify
 
