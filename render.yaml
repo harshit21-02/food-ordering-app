@@ -11,10 +11,10 @@ services:
   # Backend (Go)
   # =========================================================================
   - type: web
-    name: cafe-backend
+    name: tealogy-cafe-backend
     runtime: go
     rootDir: backend
-    plan: free
+    plan: starter
     region: oregon            # match the DB's region for low DB latency
     buildCommand: go build -o app .
     startCommand: ./app
@@ -55,7 +55,7 @@ services:
   # Frontend (Vite static site)
   # =========================================================================
   - type: web
-    name: cafe-frontend
+    name: tealogy-cafe-ordering
     runtime: static
     rootDir: frontend
     # Static sites on Render are always free — `plan` is not a valid field here.
