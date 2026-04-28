@@ -1550,6 +1550,63 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
   flex: 1;
 }
 
+/* Pay breakdown (UPI modal) */
+
+.pay-breakdown {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.pb-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: var(--muted);
+  padding: 4px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.pb-row.pb-total {
+  border-top: 1.5px solid var(--border-strong);
+  margin-top: 6px;
+  padding-top: 10px;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.btn-upi {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  background: #138f45;
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-align: center;
+  text-decoration: none;
+  transition: filter 0.12s, transform 0.05s;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.btn-upi:hover { filter: brightness(1.07); color: #fff; }
+.btn-upi:active { transform: translateY(1px); }
+
+/* GST note in cart bar */
+.cart-bar .gst-note {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--accent-soft);
+  letter-spacing: 0.5px;
+}
+
 /* ===================================================================
    Marketing landing page (/)
 =================================================================== */

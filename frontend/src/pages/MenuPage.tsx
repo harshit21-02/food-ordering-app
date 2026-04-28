@@ -31,7 +31,6 @@ const CATEGORY_ORDER = [
   'Rice Bowl',
 ]
 
-// Lightweight icon per category — no asset pipeline needed.
 const CATEGORY_ICON: Record<string, string> = {
   'Desi Chai': '🍵',
   'Flavoured Tea': '🌿',
@@ -62,7 +61,14 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: 'Cancelled',
 }
 
-// Convert "Desi Chai" → "cat-desi-chai" for use in hrefs/IDs.
+const GST_RATE = 0.05
+const UPI_ID = '7351600408@pthdfc'
+const UPI_NAME = 'Tealogy Cafe'
+
+function buildUpiLink(amount: number, code: string) {
+  return `upi://pay?pa=${UPI_ID}&pn=${encodeURIComponent(UPI_NAME)}&am=${amount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Order #${code}`)}`
+}
+
 const slug = (s: string) => 'cat-' + s.toLowerCase().replace(/[^a-z0-9]+/g, '-')
 
 export default function MenuPage() {
@@ -76,6 +82,7 @@ export default function MenuPage() {
   const [placing, setPlacing] = useState(false)
   const [placeError, setPlaceError] = useState<string | null>(null)
   const [justPlaced, setJustPlaced] = useState(false)
+  const [pendingPayment, setPendingPayment] = useState<{ amount: number; code: string } | null>(null)
 
   useEffect(() => {
     if (!orgId || !tableCode) return
@@ -129,7 +136,9 @@ export default function MenuPage() {
       .filter((x): x is { item: MenuItem; delta: number } => !!x.item && x.delta !== 0)
   }, [cart, menu])
 
-  const cartTotal = cartLines.reduce((s, l) => s + l.item.price * l.delta, 0)
+  const cartSubtotal = cartLines.reduce((s, l) => s + l.item.price * l.delta, 0)
+  const cartGst = cartSubtotal > 0 ? cartSubtotal * GST_RATE : 0
+  const cartGrandTotal = cartSubtotal + cartGst
   const cartCount = cartLines.reduce((s, l) => s + Math.abs(l.delta), 0)
 
   function changeQty(itemID: number, delta: number, placed: number) {
@@ -149,6 +158,7 @@ export default function MenuPage() {
     if (cartLines.length === 0) return
     setPlacing(true)
     setPlaceError(null)
+    const subtotal = cartSubtotal
     try {
       const order = await api.placeOrAppend({
         org_id: ctx.data.org.id,
@@ -157,8 +167,13 @@ export default function MenuPage() {
       })
       setActiveOrder(order.items.length > 0 ? order : null)
       setCart(new Map())
-      setJustPlaced(true)
-      setTimeout(() => setJustPlaced(false), 4000)
+      if (subtotal > 0) {
+        const total = parseFloat((subtotal * (1 + GST_RATE)).toFixed(2))
+        setPendingPayment({ amount: total, code: order.public_code })
+      } else {
+        setJustPlaced(true)
+        setTimeout(() => setJustPlaced(false), 4000)
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (e: any) {
       setPlaceError(e.message ?? 'Failed to update order')
@@ -286,9 +301,12 @@ export default function MenuPage() {
             <span className="small">
               {activeOrder ? 'Update your order' : 'Place order'}
             </span>
-            {cartCount} change{cartCount > 1 ? 's' : ''}
+            {cartCount} item{cartCount > 1 ? 's' : ''}
             {' · '}
-            {cartTotal >= 0 ? '+' : '−'}₹{Math.abs(cartTotal).toFixed(2)}
+            {cartGrandTotal >= 0 ? '+' : '−'}₹{Math.abs(cartGrandTotal).toFixed(2)}
+            {cartSubtotal > 0 && (
+              <span className="gst-note"> incl. GST</span>
+            )}
           </div>
           <button onClick={place} disabled={placing}>
             {placing
@@ -304,6 +322,18 @@ export default function MenuPage() {
         <div className="status-wrap error" style={{ paddingTop: 16 }}>
           {placeError}
         </div>
+      )}
+
+      {pendingPayment && (
+        <PayModal
+          amount={pendingPayment.amount}
+          code={pendingPayment.code}
+          onDone={() => {
+            setPendingPayment(null)
+            setJustPlaced(true)
+            setTimeout(() => setJustPlaced(false), 4000)
+          }}
+        />
       )}
     </div>
   )
@@ -328,6 +358,8 @@ function CardQty({
 }
 
 function RunningPanel({ order }: { order: Order }) {
+  const gst = order.total_amount * GST_RATE
+  const grandTotal = order.total_amount + gst
   return (
     <div className="running-panel">
       <div className="head">
@@ -349,11 +381,56 @@ function RunningPanel({ order }: { order: Order }) {
       </ul>
 
       <div className="total">
-        <span className="label">Running total</span>
+        <span className="label">Subtotal</span>
         <span>₹{order.total_amount.toFixed(2)}</span>
       </div>
+      <div className="total" style={{ fontSize: 13, marginTop: 2, opacity: 0.85 }}>
+        <span className="label">GST (5%)</span>
+        <span>₹{gst.toFixed(2)}</span>
+      </div>
+      <div className="total" style={{ marginTop: 4, paddingTop: 8, borderTop: '1.5px solid rgba(232,212,155,0.8)' }}>
+        <span className="label">Total</span>
+        <span>₹{grandTotal.toFixed(2)}</span>
+      </div>
 
-      <div className="hint">Add or remove items below — changes apply when you tap "Save changes".</div>
+      <div className="hint">Add items below — tap "Save changes" to update your order.</div>
+    </div>
+  )
+}
+
+function PayModal({ amount, code, onDone }: { amount: number; code: string; onDone: () => void }) {
+  const subtotal = amount / (1 + GST_RATE)
+  const gst = amount - subtotal
+  const upiLink = buildUpiLink(amount, code)
+  return (
+    <div className="modal-backdrop" onClick={onDone}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>Pay for your order</h3>
+        <p className="muted">
+          Order <strong>#{code}</strong> is placed with the kitchen.
+          Complete payment to confirm.
+        </p>
+        <div className="pay-breakdown">
+          <div className="pb-row">
+            <span>Subtotal</span>
+            <span>₹{subtotal.toFixed(2)}</span>
+          </div>
+          <div className="pb-row">
+            <span>GST (5%)</span>
+            <span>₹{gst.toFixed(2)}</span>
+          </div>
+          <div className="pb-row pb-total">
+            <span>Total</span>
+            <span>₹{amount.toFixed(2)}</span>
+          </div>
+        </div>
+        <a href={upiLink} className="btn-upi">
+          Pay ₹{amount.toFixed(2)} via UPI
+        </a>
+        <button className="btn-secondary" onClick={onDone}>
+          I've paid
+        </button>
+      </div>
     </div>
   )
 }

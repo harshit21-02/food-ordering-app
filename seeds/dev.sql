@@ -16,7 +16,7 @@ VALUES (
 -- inbox via plus-addressing — Gmail delivers every "name+anything@gmail.com"
 -- to the "name@gmail.com" inbox, so one mailbox can sign in as either role.
 INSERT INTO staff_users (org_id, email, mobile_number, name, role) VALUES
-    (NULL, 'devashishs105@gmail.com',           '+919999000001', 'Platform Super Admin',   'super_admin'),
+    (NULL, 'prateekpal641@gmail.com',            '+919999000001', 'Platform Super Admin',   'super_admin'),
     (1,    'noreply.tealogy@gmail.com',         '+917351600408', 'Tealogy Branch Admin',   'manager'),
     (1,    'noreply.tealogy+staff@gmail.com',   '+919876500003', 'Tealogy Staff',          'staff');
 
