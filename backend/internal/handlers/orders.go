@@ -74,7 +74,7 @@ func (h *OrderHandler) GetActiveOrder(c *gin.Context) {
 
 	var order models.Order
 	err := h.DB.
-		Where("table_id = ? AND status NOT IN ? AND is_paid = FALSE", table.ID, []string{models.OrderStatusCompleted, models.OrderStatusCancelled}).
+		Where("table_id = ? AND status NOT IN ? AND is_paid IS NOT TRUE", table.ID, []string{models.OrderStatusCompleted, models.OrderStatusCancelled}).
 		First(&order).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		c.Status(http.StatusNoContent)
@@ -173,7 +173,7 @@ func (h *OrderHandler) PlaceOrAppend(c *gin.Context) {
 		// Find or create the open order on this table.
 		// Exclude paid orders — a paid order is closed from the customer's side.
 		var order models.Order
-		err := tx.Where("table_id = ? AND status NOT IN ? AND is_paid = FALSE", table.ID,
+		err := tx.Where("table_id = ? AND status NOT IN ? AND is_paid IS NOT TRUE", table.ID,
 			[]string{models.OrderStatusCompleted, models.OrderStatusCancelled}).
 			First(&order).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
