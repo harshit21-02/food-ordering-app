@@ -97,27 +97,21 @@ func (h *OrderHandler) GetActiveOrder(c *gin.Context) {
 //
 // Body: { org_id, table_id, items: [{menu_item_id, delta}, ...] }
 //
-// `delta` is the *signed* change to apply per menu item:
-//   delta > 0 → add `delta` more of that item to the order
-//   delta < 0 → reduce the placed quantity by abs(delta), oldest line first
-//   delta == 0 → rejected by validation
+// Each call always creates a brand-new order so staff see every submission
+// as a distinct entry. `delta` must be positive (≥1) — there is no existing
+// order to reduce from. Server re-fetches each price from `menu`.
 //
-// If a non-final order exists for table_id, the deltas are applied to it.
-// Otherwise a new order is created (only positive deltas accepted in that case).
-// Server re-fetches each menu item's price from `menu` for additions — never
-// trusts the client.
-//
-// Returns the resulting order view (header + all items).
+// Returns the new order view (header + all items).
 
 type reconcileBody struct {
-	OrgID   int64               `json:"org_id"   binding:"required"`
-	TableID int64               `json:"table_id" binding:"required"`
-	Items   []reconcileItemIn   `json:"items"    binding:"required,min=1,dive"`
+	OrgID   int64             `json:"org_id"   binding:"required"`
+	TableID int64             `json:"table_id" binding:"required"`
+	Items   []reconcileItemIn `json:"items"    binding:"required,min=1,dive"`
 }
 
 type reconcileItemIn struct {
 	MenuItemID int64 `json:"menu_item_id" binding:"required"`
-	Delta      int   `json:"delta"        binding:"required"` // non-zero (zero is filtered out by binding)
+	Delta      int   `json:"delta"        binding:"required,min=1"`
 }
 
 func (h *OrderHandler) PlaceOrAppend(c *gin.Context) {
@@ -130,7 +124,6 @@ func (h *OrderHandler) PlaceOrAppend(c *gin.Context) {
 
 	var view orderView
 	err := h.DB.Transaction(func(tx *gorm.DB) error {
-		// Lock the table row to serialise concurrent requests for this table.
 		var table models.Table
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").
 			Where("id = ? AND org_id = ? AND is_active = TRUE", body.TableID, body.OrgID).
@@ -141,139 +134,66 @@ func (h *OrderHandler) PlaceOrAppend(c *gin.Context) {
 			return err
 		}
 
-		// We only need menu rows for the *positive* deltas (we re-fetch their
-		// price). For negative deltas we read price from existing order_items.
-		menuByID := map[int64]models.MenuItem{}
+		// Re-fetch prices from the menu — never trust the client.
 		var addIDs []int64
-		hasAdds := false
 		for _, it := range body.Items {
-			if it.Delta > 0 {
-				addIDs = append(addIDs, it.MenuItemID)
-				hasAdds = true
-			}
+			addIDs = append(addIDs, it.MenuItemID)
 		}
-		if hasAdds {
-			var rows []models.MenuItem
-			if err := tx.Where("id IN ? AND org_id = ? AND is_available = TRUE", addIDs, body.OrgID).
-				Find(&rows).Error; err != nil {
-				return err
-			}
-			seen := map[int64]bool{}
-			for _, m := range rows {
-				menuByID[m.ID] = m
-				seen[m.ID] = true
-			}
-			for _, id := range addIDs {
-				if !seen[id] {
-					return apiErr(http.StatusBadRequest, "invalid_items", "one or more menu items are missing or unavailable")
-				}
+		var rows []models.MenuItem
+		if err := tx.Where("id IN ? AND org_id = ? AND is_available = TRUE", addIDs, body.OrgID).
+			Find(&rows).Error; err != nil {
+			return err
+		}
+		menuByID := map[int64]models.MenuItem{}
+		for _, m := range rows {
+			menuByID[m.ID] = m
+		}
+		for _, id := range addIDs {
+			if _, ok := menuByID[id]; !ok {
+				return apiErr(http.StatusBadRequest, "invalid_items", "one or more menu items are missing or unavailable")
 			}
 		}
 
-		// Find or create the open order on this table.
-		// Exclude paid orders — a paid order is closed from the customer's side.
-		var order models.Order
-		err := tx.Where("table_id = ? AND status NOT IN ? AND is_paid IS NOT TRUE", table.ID,
-			[]string{models.OrderStatusCompleted, models.OrderStatusCancelled}).
-			First(&order).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// New order — every delta must be positive (nothing to reduce yet).
-			for _, it := range body.Items {
-				if it.Delta < 0 {
-					return apiErr(http.StatusBadRequest, "nothing_to_reduce", "no existing order on this table to reduce from")
-				}
-			}
-			code, gerr := newPublicCode()
-			if gerr != nil {
-				return gerr
-			}
-			order = models.Order{
-				PublicCode:  code,
-				OrgID:       body.OrgID,
-				TableID:     table.ID,
-				CustomerID:  &customerID,
-				Status:      models.OrderStatusQueued,
-				TotalAmount: 0,
-				PlacedAt:    time.Now(),
-			}
-			if err := tx.Create(&order).Error; err != nil {
-				return err
-			}
-		} else if err != nil {
+		// Always create a fresh order — each submission is visible to staff as new.
+		code, gerr := newPublicCode()
+		if gerr != nil {
+			return gerr
+		}
+		order := models.Order{
+			PublicCode: code,
+			OrgID:      body.OrgID,
+			TableID:    table.ID,
+			CustomerID: &customerID,
+			Status:     models.OrderStatusQueued,
+			PlacedAt:   time.Now(),
+		}
+		if err := tx.Create(&order).Error; err != nil {
 			return err
 		}
 
-		netDeltaTotal := 0.0
-
+		total := 0.0
 		for _, it := range body.Items {
-			if it.Delta > 0 {
-				// Append a new line for the addition.
-				m := menuByID[it.MenuItemID]
-				cust := customerID
-				row := models.OrderItem{
-					OrderID:           order.ID,
-					OrgID:             order.OrgID,
-					MenuItemID:        &m.ID,
-					ItemName:          m.Name,
-					UnitPrice:         m.Price,
-					Quantity:          it.Delta,
-					AddedByCustomerID: &cust,
-				}
-				if err := tx.Create(&row).Error; err != nil {
-					return err
-				}
-				netDeltaTotal += m.Price * float64(it.Delta)
-				continue
+			m := menuByID[it.MenuItemID]
+			cust := customerID
+			row := models.OrderItem{
+				OrderID:           order.ID,
+				OrgID:             order.OrgID,
+				MenuItemID:        &m.ID,
+				ItemName:          m.Name,
+				UnitPrice:         m.Price,
+				Quantity:          it.Delta,
+				AddedByCustomerID: &cust,
 			}
-
-			// Negative delta: reduce existing lines for this menu_item_id, oldest first.
-			toRemove := -it.Delta
-			var lines []models.OrderItem
-			if err := tx.Where("order_id = ? AND menu_item_id = ?", order.ID, it.MenuItemID).
-				Order("created_at, id").Find(&lines).Error; err != nil {
+			if err := tx.Create(&row).Error; err != nil {
 				return err
 			}
-			placed := 0
-			for _, l := range lines {
-				placed += l.Quantity
-			}
-			if toRemove > placed {
-				return apiErr(http.StatusBadRequest, "reduce_too_much",
-					"requested reduction exceeds the placed quantity for this item")
-			}
-			for i := range lines {
-				if toRemove == 0 {
-					break
-				}
-				l := &lines[i]
-				if l.Quantity <= toRemove {
-					netDeltaTotal -= l.UnitPrice * float64(l.Quantity)
-					toRemove -= l.Quantity
-					if err := tx.Delete(l).Error; err != nil {
-						return err
-					}
-				} else {
-					netDeltaTotal -= l.UnitPrice * float64(toRemove)
-					newQ := l.Quantity - toRemove
-					toRemove = 0
-					if err := tx.Model(l).UpdateColumn("quantity", newQ).Error; err != nil {
-						return err
-					}
-				}
-			}
+			total += m.Price * float64(it.Delta)
 		}
 
-		newTotal := order.TotalAmount + netDeltaTotal
-		if newTotal < 0 {
-			newTotal = 0 // defensive; shouldn't happen given validation above
-		}
-		if err := tx.Model(&order).UpdateColumn("total_amount", newTotal).Error; err != nil {
+		if err := tx.Model(&order).UpdateColumn("total_amount", total).Error; err != nil {
 			return err
 		}
-		order.TotalAmount = newTotal
-
-		// If after applying deltas the order has zero items, leave it as-is
-		// (still queued, total 0). Manager can cancel it from the dashboard.
+		order.TotalAmount = total
 
 		v, err := h.buildOrderView(tx, order)
 		if err != nil {

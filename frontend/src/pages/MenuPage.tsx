@@ -103,9 +103,6 @@ export default function MenuPage() {
     api.getMenu(orgId)
       .then((data) => setMenu({ kind: 'ok', data: data.items }))
       .catch((e: Error) => setMenu({ kind: 'error', message: e.message }))
-    api.getActiveOrder(orgId, tableCode)
-      .then((order) => setActiveOrder(order))
-      .catch(() => setActiveOrder(null))
   }, [orgId, tableCode, state.status])
 
   const grouped = useMemo(() => {
@@ -123,16 +120,6 @@ export default function MenuPage() {
     }
     return Array.from(groups.entries()).sort(([a], [b]) => order(a) - order(b))
   }, [menu])
-
-  const placedByMenuItemID = useMemo(() => {
-    const map = new Map<number, number>()
-    if (!activeOrder) return map
-    for (const it of activeOrder.items) {
-      if (!it.menu_item_id) continue
-      map.set(it.menu_item_id, (map.get(it.menu_item_id) ?? 0) + it.quantity)
-    }
-    return map
-  }, [activeOrder])
 
   const cartLines = useMemo(() => {
     if (menu.kind !== 'ok') return []
@@ -276,9 +263,7 @@ export default function MenuPage() {
           </div>
           <div className="cards">
             {items.map((it) => {
-              const placed = placedByMenuItemID.get(it.id) ?? 0
-              const delta = cart.get(it.id) ?? 0
-              const total = placed + delta
+              const total = cart.get(it.id) ?? 0
               return (
                 <article className="card" key={it.id}>
                   <div className="thumb">
@@ -297,7 +282,7 @@ export default function MenuPage() {
                   </div>
                   <CardQty
                     total={total}
-                    disableMinus={delta <= 0}
+                    disableMinus={total <= 0}
                     onMinus={() => changeQty(it.id, -1)}
                     onPlus={() => changeQty(it.id, +1)}
                   />
@@ -311,22 +296,16 @@ export default function MenuPage() {
       {cartCount > 0 && (
         <div className="cart-bar">
           <div className="summary">
-            <span className="small">
-              {activeOrder ? 'Update your order' : 'Place order'}
-            </span>
+            <span className="small">Place order</span>
             {cartCount} item{cartCount > 1 ? 's' : ''}
             {' · '}
-            {cartGrandTotal >= 0 ? '+' : '−'}₹{Math.abs(cartGrandTotal).toFixed(2)}
+            ₹{cartGrandTotal.toFixed(2)}
             {cartSubtotal > 0 && (
               <span className="gst-note"> incl. GST</span>
             )}
           </div>
           <button onClick={place} disabled={placing}>
-            {placing
-              ? 'Saving…'
-              : activeOrder
-                ? 'Save changes'
-                : 'Place order'}
+            {placing ? 'Placing…' : 'Place order'}
           </button>
         </div>
       )}
@@ -408,7 +387,7 @@ function RunningPanel({ order }: { order: Order }) {
         <span>₹{grandTotal.toFixed(2)}</span>
       </div>
 
-      <div className="hint">Add items below — tap "Save changes" to update your order.</div>
+      <div className="hint">Want more? Select items below and tap "Place order" for a new round.</div>
     </div>
   )
 }
