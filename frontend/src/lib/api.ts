@@ -194,6 +194,13 @@ export const api = {
   markPaid(publicCode: string) {
     return request<{ ok: boolean }>(`/orders/${publicCode}/mark-paid`, { method: 'POST' }) as Promise<{ ok: boolean }>
   },
+
+  createPaymentSession(publicCode: string, returnUrl: string) {
+    return request<{ payment_session_id: string }>(`/orders/${publicCode}/pay`, {
+      method: 'POST',
+      body: JSON.stringify({ return_url: returnUrl }),
+    }) as Promise<{ payment_session_id: string }>
+  },
 }
 
 // ===== Admin / staff side =====

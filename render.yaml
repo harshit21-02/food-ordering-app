@@ -50,6 +50,13 @@ services:
         value: "300"
       - key: JWT_TTL_DAYS
         value: "30"
+      # ------ Cashfree (online payments) ------
+      - key: CASHFREE_CLIENT_ID
+        sync: false
+      - key: CASHFREE_SECRET_KEY
+        sync: false
+      - key: CASHFREE_ENV
+        value: "production"
 
   # =========================================================================
   # Frontend (Vite static site)
@@ -65,6 +72,8 @@ services:
     envVars:
       - key: VITE_API_URL
         sync: false           # the deployed backend's URL, e.g. https://cafe-backend.onrender.com
+      - key: VITE_CASHFREE_ENV
+        value: "production"
 
     # SPA fallback: every non-asset route serves index.html so React Router
     # owns the URL.

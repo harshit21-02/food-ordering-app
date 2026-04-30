@@ -1,3 +1,4 @@
+import { load } from '@cashfreepayments/cashfree-js'
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api, assetUrl, type ContextResponse, type MenuItem, type Order } from '../lib/api'
@@ -62,12 +63,6 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 const GST_RATE = 0.05
-const UPI_ID = '7351600408@pthdfc'
-const UPI_NAME = 'Tealogy Cafe'
-
-function buildUpiLink(amount: number, code: string) {
-  return `upi://pay?pa=${UPI_ID}&pn=${encodeURIComponent(UPI_NAME)}&am=${amount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Order #${code}`)}`
-}
 
 const slug = (s: string) => 'cat-' + s.toLowerCase().replace(/[^a-z0-9]+/g, '-')
 
@@ -83,6 +78,17 @@ export default function MenuPage() {
   const [placeError, setPlaceError] = useState<string | null>(null)
   const [justPlaced, setJustPlaced] = useState(false)
   const [pendingPayment, setPendingPayment] = useState<{ amount: number; code: string } | null>(null)
+  const [paymentSuccess, setPaymentSuccess] = useState(false)
+
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('paid') === '1') {
+      setPaymentSuccess(true)
+      url.searchParams.delete('paid')
+      window.history.replaceState({}, '', url.toString())
+      setTimeout(() => setPaymentSuccess(false), 5000)
+    }
+  }, [])
 
   useEffect(() => {
     if (!orgId || !tableCode) return
@@ -238,10 +244,17 @@ export default function MenuPage() {
         </nav>
       )}
 
+      {paymentSuccess && (
+        <div className="placed-toast" style={{ background: 'linear-gradient(180deg,#ecfdf5,#d1fae5)', borderColor: '#a7f3d0', color: '#065f46' }}>
+          <span style={{ fontSize: 18 }}>✓</span>
+          Payment received! Your order is confirmed.
+        </div>
+      )}
+
       {justPlaced && (
         <div className="placed-toast">
           <span style={{ fontSize: 18 }}>✓</span>
-          Order updated. Kitchen has been notified.
+          Order placed. Kitchen has been notified.
         </div>
       )}
 
@@ -328,13 +341,6 @@ export default function MenuPage() {
         <PayModal
           amount={pendingPayment.amount}
           code={pendingPayment.code}
-          onPaid={async () => {
-            try { await api.markPaid(pendingPayment.code) } catch { /* best-effort */ }
-            setActiveOrder(null)
-            setPendingPayment(null)
-            setJustPlaced(true)
-            setTimeout(() => setJustPlaced(false), 4000)
-          }}
           onCounter={() => {
             setPendingPayment(null)
             setJustPlaced(true)
@@ -410,24 +416,37 @@ function RunningPanel({ order }: { order: Order }) {
 function PayModal({
   amount,
   code,
-  onPaid,
   onCounter,
 }: {
   amount: number
   code: string
-  onPaid: () => void
   onCounter: () => void
 }) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const subtotal = amount / (1 + GST_RATE)
   const gst = amount - subtotal
-  const upiLink = buildUpiLink(amount, code)
+
+  async function payCashfree() {
+    setLoading(true)
+    setError(null)
+    try {
+      const returnUrl = window.location.origin + window.location.pathname + '?paid=1'
+      const { payment_session_id } = await api.createPaymentSession(code, returnUrl)
+      const cfMode = (import.meta.env.VITE_CASHFREE_ENV ?? 'sandbox') as 'sandbox' | 'production'
+      const cashfree = await load({ mode: cfMode })
+      cashfree.checkout({ paymentSessionId: payment_session_id, redirectTarget: '_self' })
+    } catch (e: any) {
+      setError(e.message ?? 'Could not start payment')
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="modal-backdrop">
       <div className="modal">
         <h3>How would you like to pay?</h3>
-        <p className="muted">
-          Order <strong>#{code}</strong> is with the kitchen.
-        </p>
+        <p className="muted">Order <strong>#{code}</strong> is with the kitchen.</p>
         <div className="pay-breakdown">
           <div className="pb-row">
             <span>Subtotal</span>
@@ -442,13 +461,11 @@ function PayModal({
             <span>₹{amount.toFixed(2)}</span>
           </div>
         </div>
-        <a href={upiLink} className="btn-upi">
-          Pay ₹{amount.toFixed(2)} via UPI
-        </a>
-        <button className="btn-secondary" style={{ width: '100%', marginTop: 8 }} onClick={onPaid}>
-          I've paid
+        {error && <div className="error-text">{error}</div>}
+        <button className="btn-upi" onClick={payCashfree} disabled={loading}>
+          {loading ? 'Opening payment…' : `Pay ₹${amount.toFixed(2)} online`}
         </button>
-        <button className="btn-secondary" style={{ width: '100%', marginTop: 6, color: 'var(--muted-2)', borderColor: 'var(--border)' }} onClick={onCounter}>
+        <button className="btn-secondary" style={{ width: '100%', marginTop: 8, color: 'var(--muted-2)', borderColor: 'var(--border)' }} onClick={onCounter}>
           Pay at counter
         </button>
       </div>

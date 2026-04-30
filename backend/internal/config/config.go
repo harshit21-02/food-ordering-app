@@ -23,6 +23,11 @@ type Config struct {
 	// CORSOrigins is the comma-separated allow-list of frontend origins.
 	CORSOrigins []string
 
+	// Cashfree (optional). If ClientID is empty, payment sessions are disabled.
+	CashfreeClientID  string
+	CashfreeSecretKey string
+	CashfreeEnv       string // "sandbox" | "production"
+
 	// SMTP (optional). If SMTPHost is empty, OTP emails aren't sent.
 	// In dev, OTP is returned in the API response (`dev_otp`); in production
 	// it is never returned regardless of mailer state.
@@ -64,6 +69,9 @@ func Load() *Config {
 		JWTTTLDays:    envInt("JWT_TTL_DAYS", 30),
 		Env:           envDefault("ENV", "development"),
 		CORSOrigins:   corsOrigins,
+		CashfreeClientID:  os.Getenv("CASHFREE_CLIENT_ID"),
+		CashfreeSecretKey: os.Getenv("CASHFREE_SECRET_KEY"),
+		CashfreeEnv:       envDefault("CASHFREE_ENV", "sandbox"),
 		SMTPHost:      os.Getenv("SMTP_HOST"),
 		SMTPPort:      envInt("SMTP_PORT", 587),
 		SMTPUser:      os.Getenv("SMTP_USER"),

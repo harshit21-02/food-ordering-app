@@ -33,6 +33,11 @@ func New(cfg *config.Config, db *gorm.DB, mail *mailer.Mailer) (*gin.Engine, err
 
 	isProd := cfg.IsProduction()
 
+	cfBase := "https://sandbox.cashfree.com/pg"
+	if cfg.CashfreeEnv == "production" {
+		cfBase = "https://api.cashfree.com/pg"
+	}
+
 	publicH := handlers.NewPublicHandler(db)
 	authH := handlers.NewAuthHandler(db, jwtCfg, cfg.OTPTTLSeconds, mail, isProd)
 	orderH := handlers.NewOrderHandler(db)
@@ -43,6 +48,7 @@ func New(cfg *config.Config, db *gorm.DB, mail *mailer.Mailer) (*gin.Engine, err
 	adminTableH := handlers.NewAdminTableHandler(db)
 	superOrgsH := handlers.NewSuperOrgsHandler(db)
 	superStaffH := handlers.NewSuperStaffHandler(db)
+	paymentH := handlers.NewPaymentHandler(db, cfg.CashfreeClientID, cfg.CashfreeSecretKey, cfBase)
 
 	customerAuth := middleware.CustomerAuth(db, jwtCfg)
 	staffAuth := middleware.StaffAuth(db, jwtCfg)
@@ -92,6 +98,7 @@ func New(cfg *config.Config, db *gorm.DB, mail *mailer.Mailer) (*gin.Engine, err
 		authed.GET("/orgs/:org_id/tables/:table_code/active-order", orderH.GetActiveOrder)
 		authed.POST("/orders", orderH.PlaceOrAppend)
 		authed.POST("/orders/:public_code/mark-paid", orderH.MarkPaid)
+		authed.POST("/orders/:public_code/pay", paymentH.CreateSession)
 		authed.GET("/orders/:public_code", orderH.GetByPublicCode)
 	}
 
@@ -137,6 +144,9 @@ func New(cfg *config.Config, db *gorm.DB, mail *mailer.Mailer) (*gin.Engine, err
 		super.POST("/staff", superStaffH.Create)
 		super.PATCH("/staff/:id", superStaffH.Update)
 	}
+
+	// Cashfree webhook — public, no auth, Cashfree signs the request.
+	api.POST("/payments/cashfree-webhook", paymentH.Webhook)
 
 	r.Static("/uploads", "./uploads")
 	return r, nil

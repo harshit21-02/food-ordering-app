@@ -1587,6 +1587,9 @@ function OrderCard({
           <span className="lbl">Total</span>
           <strong>₹{order.total_amount.toFixed(2)}</strong>
         </div>
+        <span className={`pay-badge ${order.is_paid ? 'pay-badge-paid' : 'pay-badge-unpaid'}`}>
+          {order.is_paid ? 'Paid' : 'Not paid'}
+        </span>
         <div className="oc-actions">
           {actions.map((a) => (
             <button
