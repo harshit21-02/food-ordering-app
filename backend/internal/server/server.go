@@ -91,6 +91,7 @@ func New(cfg *config.Config, db *gorm.DB, mail *mailer.Mailer) (*gin.Engine, err
 		authed.GET("/orgs/:org_id/menu", publicH.GetMenu)
 		authed.GET("/orgs/:org_id/tables/:table_code/active-order", orderH.GetActiveOrder)
 		authed.POST("/orders", orderH.PlaceOrAppend)
+		authed.POST("/orders/:public_code/mark-paid", orderH.MarkPaid)
 		authed.GET("/orders/:public_code", orderH.GetByPublicCode)
 	}
 

@@ -74,7 +74,7 @@ func (h *OrderHandler) GetActiveOrder(c *gin.Context) {
 
 	var order models.Order
 	err := h.DB.
-		Where("table_id = ? AND status NOT IN ?", table.ID, []string{models.OrderStatusCompleted, models.OrderStatusCancelled}).
+		Where("table_id = ? AND status NOT IN ? AND is_paid = FALSE", table.ID, []string{models.OrderStatusCompleted, models.OrderStatusCancelled}).
 		First(&order).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		c.Status(http.StatusNoContent)
@@ -171,8 +171,9 @@ func (h *OrderHandler) PlaceOrAppend(c *gin.Context) {
 		}
 
 		// Find or create the open order on this table.
+		// Exclude paid orders — a paid order is closed from the customer's side.
 		var order models.Order
-		err := tx.Where("table_id = ? AND status NOT IN ?", table.ID,
+		err := tx.Where("table_id = ? AND status NOT IN ? AND is_paid = FALSE", table.ID,
 			[]string{models.OrderStatusCompleted, models.OrderStatusCancelled}).
 			First(&order).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -336,6 +337,44 @@ func (h *OrderHandler) GetByPublicCode(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, view)
+}
+
+// ----- POST /orders/:public_code/mark-paid ------------------------------------------
+//
+// Called by the customer after completing UPI payment. Sets is_paid = true so
+// the next PlaceOrAppend on the same table creates a fresh order instead of
+// appending to this one.
+
+func (h *OrderHandler) MarkPaid(c *gin.Context) {
+	code := c.Param("public_code")
+	customerID := c.GetInt64("customer_id")
+
+	var order models.Order
+	if err := h.DB.Where("public_code = ?", code).First(&order).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			RespondError(c, http.StatusNotFound, "order_not_found", "order not found")
+			return
+		}
+		RespondError(c, http.StatusInternalServerError, "db_error", err.Error())
+		return
+	}
+
+	if order.CustomerID == nil || *order.CustomerID != customerID {
+		RespondError(c, http.StatusForbidden, "not_your_order", "you didn't place this order")
+		return
+	}
+
+	if order.IsPaid {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+		return
+	}
+
+	if err := h.DB.Model(&order).UpdateColumn("is_paid", true).Error; err != nil {
+		RespondError(c, http.StatusInternalServerError, "db_error", err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 // --- internal: a tiny error type so transaction code can return early with status -----

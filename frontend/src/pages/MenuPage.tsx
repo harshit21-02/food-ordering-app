@@ -141,12 +141,11 @@ export default function MenuPage() {
   const cartGrandTotal = cartSubtotal + cartGst
   const cartCount = cartLines.reduce((s, l) => s + Math.abs(l.delta), 0)
 
-  function changeQty(itemID: number, delta: number, placed: number) {
+  function changeQty(itemID: number, delta: number) {
     setCart((prev) => {
-      const next = new Map(prev)
+      const next = new Map<number, number>(prev)
       const cur = next.get(itemID) ?? 0
-      const proposed = cur + delta
-      const clamped = Math.max(-placed, proposed)
+      const clamped = Math.max(0, cur + delta)
       if (clamped === 0) next.delete(itemID)
       else next.set(itemID, clamped)
       return next
@@ -285,8 +284,9 @@ export default function MenuPage() {
                   </div>
                   <CardQty
                     total={total}
-                    onMinus={() => changeQty(it.id, -1, placed)}
-                    onPlus={() => changeQty(it.id, +1, placed)}
+                    disableMinus={delta <= 0}
+                    onMinus={() => changeQty(it.id, -1)}
+                    onPlus={() => changeQty(it.id, +1)}
                   />
                 </article>
               )
@@ -328,7 +328,14 @@ export default function MenuPage() {
         <PayModal
           amount={pendingPayment.amount}
           code={pendingPayment.code}
-          onDone={() => {
+          onPaid={async () => {
+            try { await api.markPaid(pendingPayment.code) } catch { /* best-effort */ }
+            setActiveOrder(null)
+            setPendingPayment(null)
+            setJustPlaced(true)
+            setTimeout(() => setJustPlaced(false), 4000)
+          }}
+          onCounter={() => {
             setPendingPayment(null)
             setJustPlaced(true)
             setTimeout(() => setJustPlaced(false), 4000)
@@ -341,16 +348,18 @@ export default function MenuPage() {
 
 function CardQty({
   total,
+  disableMinus,
   onMinus,
   onPlus,
 }: {
   total: number
+  disableMinus: boolean
   onMinus: () => void
   onPlus: () => void
 }) {
   return (
     <div className={`qty${total > 0 ? ' has-items' : ''}`}>
-      <button onClick={onMinus} aria-label="Decrease">−</button>
+      <button onClick={onMinus} disabled={disableMinus} aria-label="Decrease">−</button>
       <span className="count">{total}</span>
       <button onClick={onPlus} aria-label="Increase">+</button>
     </div>
@@ -398,17 +407,26 @@ function RunningPanel({ order }: { order: Order }) {
   )
 }
 
-function PayModal({ amount, code, onDone }: { amount: number; code: string; onDone: () => void }) {
+function PayModal({
+  amount,
+  code,
+  onPaid,
+  onCounter,
+}: {
+  amount: number
+  code: string
+  onPaid: () => void
+  onCounter: () => void
+}) {
   const subtotal = amount / (1 + GST_RATE)
   const gst = amount - subtotal
   const upiLink = buildUpiLink(amount, code)
   return (
-    <div className="modal-backdrop" onClick={onDone}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Pay for your order</h3>
+    <div className="modal-backdrop">
+      <div className="modal">
+        <h3>How would you like to pay?</h3>
         <p className="muted">
-          Order <strong>#{code}</strong> is placed with the kitchen.
-          Complete payment to confirm.
+          Order <strong>#{code}</strong> is with the kitchen.
         </p>
         <div className="pay-breakdown">
           <div className="pb-row">
@@ -427,8 +445,11 @@ function PayModal({ amount, code, onDone }: { amount: number; code: string; onDo
         <a href={upiLink} className="btn-upi">
           Pay ₹{amount.toFixed(2)} via UPI
         </a>
-        <button className="btn-secondary" onClick={onDone}>
+        <button className="btn-secondary" style={{ width: '100%', marginTop: 8 }} onClick={onPaid}>
           I've paid
+        </button>
+        <button className="btn-secondary" style={{ width: '100%', marginTop: 6, color: 'var(--muted-2)', borderColor: 'var(--border)' }} onClick={onCounter}>
+          Pay at counter
         </button>
       </div>
     </div>

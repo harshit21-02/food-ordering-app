@@ -190,6 +190,10 @@ export const api = {
   getOrder(publicCode: string) {
     return request<Order>(`/orders/${publicCode}`) as Promise<Order>
   },
+
+  markPaid(publicCode: string) {
+    return request<{ ok: boolean }>(`/orders/${publicCode}/mark-paid`, { method: 'POST' }) as Promise<{ ok: boolean }>
+  },
 }
 
 // ===== Admin / staff side =====
