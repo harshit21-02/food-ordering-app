@@ -103,6 +103,9 @@ export default function MenuPage() {
     api.getMenu(orgId)
       .then((data) => setMenu({ kind: 'ok', data: data.items }))
       .catch((e: Error) => setMenu({ kind: 'error', message: e.message }))
+    api.getActiveOrder(orgId, tableCode)
+      .then((order) => setActiveOrder(order))
+      .catch(() => setActiveOrder(null))
   }, [orgId, tableCode, state.status])
 
   const grouped = useMemo(() => {

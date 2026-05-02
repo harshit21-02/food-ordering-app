@@ -74,7 +74,8 @@ func (h *OrderHandler) GetActiveOrder(c *gin.Context) {
 
 	var order models.Order
 	err := h.DB.
-		Where("table_id = ? AND status NOT IN ? AND is_paid IS NOT TRUE", table.ID, []string{models.OrderStatusCompleted, models.OrderStatusCancelled}).
+		Where("table_id = ? AND status NOT IN ?", table.ID, []string{models.OrderStatusCompleted, models.OrderStatusCancelled}).
+		Order("placed_at DESC").
 		First(&order).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		c.Status(http.StatusNoContent)
