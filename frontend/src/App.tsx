@@ -133,12 +133,35 @@ function Home() {
       <section className="landing-cta-bar">
         <div>
           <h2>Want it for your cafe?</h2>
-          <p>Get a branch + manager set up in one step. Email <a href="mailto:hello@mesa.app">hello@mesa.app</a> to get on-boarded.</p>
+          <p>Get a branch + manager set up in one step. Email <a href="mailto:noreply.tealogy@gmail.com">noreply.tealogy@gmail.com</a> to get on-boarded.</p>
         </div>
         <Link to="/admin/login" className="btn-primary-lg">Open admin sign-in →</Link>
       </section>
 
+      <section className="landing-contact" id="contact">
+        <div className="lcontact-inner">
+          <h2>Contact Us</h2>
+          <div className="lcontact-grid">
+            <div className="lcontact-block">
+              <div className="lcontact-label">Legal Trade Name</div>
+              <div className="lcontact-value">BHUVIT FOODS &amp; BEVERAGES ENTERPRISE</div>
+            </div>
+            <div className="lcontact-block">
+              <div className="lcontact-label">Brand</div>
+              <div className="lcontact-value">Tealogy Cafe</div>
+            </div>
+            <div className="lcontact-block">
+              <div className="lcontact-label">Email</div>
+              <div className="lcontact-value">
+                <a href="mailto:noreply.tealogy@gmail.com">noreply.tealogy@gmail.com</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <footer className="landing-foot">
+        <div className="foot-legal">BHUVIT FOODS &amp; BEVERAGES ENTERPRISE · Tealogy Cafe</div>
         <div className="foot-shortcuts">
           Demo links —
           <Link to="/o/1/t/t_a7Kx9"> /o/1/t/t_a7Kx9</Link>
